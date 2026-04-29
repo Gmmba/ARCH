@@ -22,13 +22,13 @@ int64_t process_array_neon(const int32_t* data, size_t n) {
     
     for (; i + 3 < n; i += 4) {
         int32x4_t vec = vld1q_s32(data + i);
-        int32x4_t mask_pos = vcgtq_s32(vec, vdupq_n_s32(0));
-        int32x4_t mask_neg = vcltq_s32(vec, vdupq_n_s32(0));
+        uint32x4_t mask_pos = vcgtq_s32(vec, vdupq_n_s32(0));
+        uint32x4_t mask_neg = vcltq_s32(vec, vdupq_n_s32(0));
         int32x4_t sign = vshrq_n_s32(vec, 31);
         int32x4_t abs_val = veorq_s32(vec, sign);
         abs_val = vsubq_s32(abs_val, sign);
-        int32x4_t pos_part = vandq_s32(vec, mask_pos);
-        int32x4_t neg_part = vandq_s32(abs_val, mask_neg);
+        int32x4_t pos_part = vandq_s32(vec, reinterpret_cast<int32x4_t>(mask_pos));
+        int32x4_t neg_part = vandq_s32(abs_val, reinterpret_cast<int32x4_t>(mask_neg));
         int32x4_t contrib = vorrq_s32(pos_part, neg_part);
         acc = vaddq_s32(acc, contrib);
     }
