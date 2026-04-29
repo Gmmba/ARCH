@@ -1,6 +1,9 @@
 #include <arm_neon.h>
 #include <cstdint>
 #include <cstddef>
+#include <chrono>
+#include <iostream>
+#include <iomanip>
 
 int64_t process_array_scalar(const int32_t* data, size_t n) {
     int64_t sum = 0;
@@ -48,14 +51,43 @@ int64_t process_array_neon(const int32_t* data, size_t n) {
     return sum;
 }
 
+template<typename Func>
+double benchmark(Func func, const int32_t* data, size_t n, int iterations = 100) {
+    auto start = std::chrono::high_resolution_clock::now();
+    volatile int64_t result = 0;
+    for (int i = 0; i < iterations; ++i) {
+        result = func(data, n);
+    }
+    auto end = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double, std::milli> duration = end - start;
+    return duration.count() / iterations;
+}
+
 int main() {
-    alignas(16) static int32_t data[1024];
-    for (int i = 0; i < 1024; ++i) {
-        data[i] = i - 512;
+    constexpr size_t N = 100000;
+    constexpr int ITERATIONS = 100;
+    
+    alignas(16) static int32_t* data = new int32_t[N];
+    for (size_t i = 0; i < N; ++i) {
+        data[i] = static_cast<int32_t>(i * 7 % 2000) - 1000;
     }
     
-    int64_t scalar_result = process_array_scalar(data, 1024);
-    int64_t neon_result = process_array_neon(data, 1024);
+    int64_t scalar_result = process_array_scalar(data, N);
+    int64_t neon_result = process_array_neon(data, N);
     
+    std::cout << "  Scalar: " << scalar_result << "\n";
+    std::cout << "  NEON:   " << neon_result << "\n";
+    std::cout << "  Match:  " << (scalar_result == neon_result ? "YES" : "NO") << "\n\n";
+    
+    double scalar_time = benchmark(process_array_scalar, data, N, ITERATIONS);
+    double neon_time = benchmark(process_array_neon, data, N, ITERATIONS);
+    double speedup = scalar_time / neon_time;
+    
+    std::cout << std::fixed << std::setprecision(3);
+    std::cout << "  Scalar time: " << scalar_time << " ms\n";
+    std::cout << "  NEON time:   " << neon_time << " ms\n";
+    std::cout << "  Speedup:     " << speedup << "x\n";
+    
+    delete[] data;
     return (scalar_result == neon_result) ? 0 : 1;
 }
