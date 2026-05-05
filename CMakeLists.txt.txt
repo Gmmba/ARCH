@@ -1,0 +1,56 @@
+cmake_minimum_required(VERSION 3.16)
+project(neon_implot_gui CXX)
+
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+add_compile_options(-O3)
+
+if(CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64|arm")
+    message(STATUS "Целевая платформа: ARM — включаем NEON")
+    add_compile_options(-march=armv8-a)
+    add_compile_definitions(ARM_NEON_AVAILABLE)
+else()
+    message(STATUS "Целевая платформа: x86 — NEON недоступен, используем fallback")
+endif()
+
+find_package(SDL2 REQUIRED)
+find_package(OpenGL REQUIRED)
+
+
+set(IMGUI_DIR ${CMAKE_SOURCE_DIR}/imgui)
+set(IMPLOT_DIR ${CMAKE_SOURCE_DIR}/implot)
+
+set(IMGUI_SOURCES
+    ${IMGUI_DIR}/imgui.cpp
+    ${IMGUI_DIR}/imgui_draw.cpp
+    ${IMGUI_DIR}/imgui_tables.cpp
+    ${IMGUI_DIR}/imgui_widgets.cpp
+    ${IMGUI_DIR}/backends/imgui_impl_sdl2.cpp
+    ${IMGUI_DIR}/backends/imgui_impl_opengl3.cpp
+)
+
+set(IMPLOT_SOURCES
+    ${IMPLOT_DIR}/implot.cpp
+    ${IMPLOT_DIR}/implot_items.cpp
+)
+
+add_executable(neon_gui
+    neon_implot_gui.cpp
+    ${IMGUI_SOURCES}
+    ${IMPLOT_SOURCES}
+)
+
+target_include_directories(neon_gui PRIVATE
+    ${IMGUI_DIR}
+    ${IMGUI_DIR}/backends
+    ${IMPLOT_DIR}
+    ${SDL2_INCLUDE_DIRS}
+)
+
+target_link_libraries(neon_gui PRIVATE
+    ${SDL2_LIBRARIES}
+    OpenGL::GL
+)
+
+message(STATUS "Сборка: cmake -B build && cmake --build build -j$(nproc)")
