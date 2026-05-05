@@ -1,5 +1,7 @@
-sudo apt install -y libsdl2-dev libgl-dev cmake build-essential
-git clone https://github.com/ocornut/imgui.git
+sudo apt install -y libsdl2-dev libgl-dev cmake build-essential  
+
+git clone https://github.com/ocornut/imgui.git  
+
 git clone https://github.com/epezent/implot.git  
 
 cmake -B build && cmake --build build -j4
