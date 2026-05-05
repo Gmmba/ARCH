@@ -75,7 +75,7 @@ int main() {
     int64_t neon_result   = process_array_neon  (data, N);
     std::cout << "  Scalar: " << scalar_result << "\n";
     std::cout << "  NEON:   " << neon_result   << "\n";
-    std::cout << "  Match:  " << (scalar_result == neon_result ? "YES ✓" : "NO ✗") << "\n\n";
+    std::cout << "  Match:  " << (scalar_result == neon_result ? "YES" : "NO") << "\n\n";
     double scalar_ms = benchmark(process_array_scalar, data, N, ITERATIONS);
     double neon_ms   = benchmark(process_array_neon,   data, N, ITERATIONS);
     double speedup   = scalar_ms / neon_ms;
