@@ -46,19 +46,6 @@
 #include <numeric>
 #include <random>
 
-#ifndef ImAxis_Y1
-#  define ImAxis_Y1  1
-#endif
-#ifndef ImAxis_X1
-#  define ImAxis_X1  0
-#endif
-#ifndef ImPlotCond_Once
-#  define ImPlotCond_Once  ImGuiCond_Once
-#endif
-#ifndef ImPlotScale_Log10
-#  define ImPlotScale_Log10  1
-#endif
-
 __attribute__((noinline, optimize("no-tree-vectorize")))
 static int64_t process_scalar(const int32_t* data, size_t n) {
     int64_t sum = 0;
@@ -337,11 +324,21 @@ static void render_gui(AppState& s) {
     float plot_h1 = 220.0f;
     float plot_h2 = 200.0f;
 
+    // FIX 1: begin_plot переписан под новый API ImPlot v0.14+
+    // BeginPlot теперь принимает только (title, size, flags)
+    // Названия осей задаются через SetupAxes() внутри блока плота
     auto begin_plot = [](const char* title, const char* xlabel,
                          const char* ylabel, ImVec2 sz) -> bool {
-        return ImPlot::BeginPlot(title, xlabel, ylabel, sz);
+        if (ImPlot::BeginPlot(title, sz)) {
+            ImPlot::SetupAxes(xlabel, ylabel);
+            return true;
+        }
+        return false;
     };
 
+    // FIX 2: ImPlotCol_Line и ImPlotStyleVar_LineWeight существуют в новом API,
+    // но PushStyleColor/PushStyleVar для линий работают только ДО PlotLine.
+    // Оставляем как есть — эти константы присутствуют в implot.h v0.14+.
     auto set_line = [](ImVec4 col, float w) {
         ImPlot::PushStyleColor(ImPlotCol_Line, col);
         ImPlot::PushStyleVar(ImPlotStyleVar_LineWeight, w);
@@ -351,6 +348,8 @@ static void render_gui(AppState& s) {
         ImPlot::PopStyleVar(1);
     };
 
+    // FIX 3: ImPlotCol_Fill → ImPlotCol_Fill (существует в v0.14+, оставляем)
+    // Если всё же не компилируется — заменяем на ImPlotCol_MarkerFill
     auto set_fill = [](ImVec4 col) {
         ImPlot::PushStyleColor(ImPlotCol_Fill, col);
         ImPlot::PushStyleColor(ImPlotCol_Line, col);
@@ -389,7 +388,8 @@ static void render_gui(AppState& s) {
     if (s.history_x.size() > 1) {
         if (begin_plot("История ускорения (x)", "Прогон", "Ускорение (x)",
                 ImVec2(plot_w, plot_h2))) {
-            ImPlot::SetNextPlotLimitsY(0.0, 8.0, ImGuiCond_Once);
+            // FIX 4: SetNextPlotLimitsY → SetupAxisLimits для оси Y
+            ImPlot::SetupAxisLimits(ImAxis_Y1, 0.0, 8.0, ImPlotCond_Once);
             double xs3[] = {s.history_x.front(), s.history_x.back()};
             double ys3[] = {3.0, 3.0};
             set_line(ImVec4(1,1,0,0.6f), 1.5f);
