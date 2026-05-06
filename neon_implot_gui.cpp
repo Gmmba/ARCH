@@ -1,18 +1,22 @@
 /*
  *
+ * Компиляция на ARM Linux (с NEON):
  *   g++ -O3 -march=armv8-a -o neon_gui neon_implot_gui.cpp \
  *       $(sdl2-config --cflags --libs) \
  *       -lGL -limgui -limplot \
  *       -DARM_NEON_AVAILABLE
  *
+ * Компиляция на x86 Linux (без NEON, для отладки):
  *   g++ -O3 -o neon_gui neon_implot_gui.cpp \
  *       $(sdl2-config --cflags --libs) \
  *       -lGL -limgui -limplot
  *
- *   -I./imgui -I./implot imgui/*.cpp implot/implot*.cpp \
- *   imgui/backends/imgui_impl_sdl2.cpp \
- *   imgui/backends/imgui_impl_opengl3.cpp
- * 
+ * Если ImGui/ImPlot установлены как submodule, а не системно:
+ *   Добавьте флаги: -I./imgui -I./implot imgui/*.cpp implot/implot*.cpp \
+ *                   imgui/backends/imgui_impl_sdl2.cpp \
+ *                   imgui/backends/imgui_impl_opengl3.cpp
+ *
+ * Зависимости:
  *   sudo apt install libsdl2-dev libgl-dev
  *   git clone https://github.com/ocornut/imgui
  *   git clone https://github.com/epezent/implot
@@ -41,6 +45,19 @@
 #include <algorithm>
 #include <numeric>
 #include <random>
+
+#ifndef ImAxis_Y1
+#  define ImAxis_Y1  1
+#endif
+#ifndef ImAxis_X1
+#  define ImAxis_X1  0
+#endif
+#ifndef ImPlotCond_Once
+#  define ImPlotCond_Once  ImGuiCond_Once
+#endif
+#ifndef ImPlotScale_Log10
+#  define ImPlotScale_Log10  1
+#endif
 
 __attribute__((noinline, optimize("no-tree-vectorize")))
 static int64_t process_scalar(const int32_t* data, size_t n) {
@@ -246,7 +263,7 @@ static void render_gui(AppState& s) {
 
     ImGui::BeginChild("Settings", ImVec2(280, 0), true);
 
-    ImGui::TextColored(ImVec4(0.4f, 0.9f, 0.4f, 1.0f), "Параметры");
+    ImGui::TextColored(ImVec4(0.4f, 0.9f, 0.4f, 1.0f), "⚙  Параметры");
     ImGui::Separator();
     ImGui::Spacing();
 
@@ -277,7 +294,7 @@ static void render_gui(AppState& s) {
 
     ImGui::Spacing();
     ImGui::Separator();
-    ImGui::TextColored(ImVec4(0.5f, 0.8f, 1.0f, 1.0f), "Платформа");
+    ImGui::TextColored(ImVec4(0.5f, 0.8f, 1.0f, 1.0f), "ℹ  Платформа");
 #ifdef ARM_NEON_AVAILABLE
     ImGui::TextColored(ImVec4(0.3f,1.0f,0.3f,1.0f), "ARM NEON: АКТИВЕН");
 #else
@@ -287,7 +304,7 @@ static void render_gui(AppState& s) {
     if (s.ran) {
         ImGui::Spacing();
         ImGui::Separator();
-        ImGui::TextColored(ImVec4(0.4f, 0.9f, 0.4f, 1.0f), "Результаты");
+        ImGui::TextColored(ImVec4(0.4f, 0.9f, 0.4f, 1.0f), "📈  Результаты");
         ImGui::Spacing();
 
         ImGui::Text("Scalar: %.4f мс", s.scalar_ms);
@@ -320,104 +337,129 @@ static void render_gui(AppState& s) {
     float plot_h1 = 220.0f;
     float plot_h2 = 200.0f;
 
-    if (s.hist_done && ImPlot::BeginPlot("Распределение входных данных",
+    auto begin_plot = [](const char* title, const char* xlabel,
+                         const char* ylabel, ImVec2 sz) -> bool {
+        return ImPlot::BeginPlot(title, xlabel, ylabel, sz);
+    };
+
+    auto set_line = [](ImVec4 col, float w) {
+        ImPlot::PushStyleColor(ImPlotCol_Line, col);
+        ImPlot::PushStyleVar(ImPlotStyleVar_LineWeight, w);
+    };
+    auto pop_line = []() {
+        ImPlot::PopStyleColor(1);
+        ImPlot::PopStyleVar(1);
+    };
+
+    auto set_fill = [](ImVec4 col) {
+        ImPlot::PushStyleColor(ImPlotCol_Fill, col);
+        ImPlot::PushStyleColor(ImPlotCol_Line, col);
+    };
+    auto pop_fill = []() {
+        ImPlot::PopStyleColor(2);
+    };
+
+    if (s.hist_done && begin_plot("Распределение входных данных",
+            "Значение", "Частота",
             ImVec2(plot_w * 0.5f - 4, plot_h1))) {
-        ImPlot::SetupAxes("Значение", "Частота");
         double bw = (s.range_max - s.range_min) / double(s.hist_bins.size());
-        ImPlot::SetNextFillStyle(ImVec4(0.3f,0.6f,1.0f,0.8f));
+        set_fill(ImVec4(0.3f,0.6f,1.0f,0.8f));
         ImPlot::PlotBars("Элементы",
             s.hist_bins.data(), s.hist_counts.data(),
             (int)s.hist_bins.size(), bw * 0.9);
+        pop_fill();
         ImPlot::EndPlot();
     }
 
     if (s.ran) {
         ImGui::SameLine();
-        if (ImPlot::BeginPlot("Время выполнения (мс)",
+        if (begin_plot("Время выполнения (мс)", "Версия", "мс",
                 ImVec2(plot_w * 0.5f - 4, plot_h1))) {
-            ImPlot::SetupAxes("Версия", "мс");
-            const char* labels[] = {"Scalar", "NEON"};
-            double vals[]   = {s.scalar_ms, s.neon_ms};
-            ImPlot::SetNextFillStyle(ImVec4(0.9f, 0.4f, 0.3f, 1.0f));
+            double vals[] = {s.scalar_ms, s.neon_ms};
+            set_fill(ImVec4(0.9f, 0.4f, 0.3f, 1.0f));
             ImPlot::PlotBars("Scalar", &vals[0], 1, 0.4, 0);
-            ImPlot::SetNextFillStyle(ImVec4(0.3f, 0.9f, 0.5f, 1.0f));
+            pop_fill();
+            set_fill(ImVec4(0.3f, 0.9f, 0.5f, 1.0f));
             ImPlot::PlotBars("NEON",   &vals[1], 1, 0.4, 1);
-            (void)labels;
+            pop_fill();
             ImPlot::EndPlot();
         }
     }
 
     if (s.history_x.size() > 1) {
-        if (ImPlot::BeginPlot("История ускорения (×)",
+        if (begin_plot("История ускорения (x)", "Прогон", "Ускорение (x)",
                 ImVec2(plot_w, plot_h2))) {
-            ImPlot::SetupAxes("Прогон №", "Ускорение (×)");
-            ImPlot::SetupAxisLimits(ImAxis_Y1, 0.0, 8.0, ImPlotCond_Once);
+            ImPlot::SetNextPlotLimitsY(0.0, 8.0, ImGuiCond_Once);
             double xs3[] = {s.history_x.front(), s.history_x.back()};
             double ys3[] = {3.0, 3.0};
-            ImPlot::SetNextLineStyle(ImVec4(1,1,0,0.6f), 1.5f);
-            ImPlot::PlotLine("Цель 3×", xs3, ys3, 2);
-
-            ImPlot::SetNextLineStyle(ImVec4(0.3f,1.0f,0.5f,1.0f), 2.0f);
-            ImPlot::PlotLine("Ускорение",
-                s.history_x.data(),
-                s.history_speedup.data(),
-                (int)s.history_x.size());
-            ImPlot::SetNextFillStyle(ImVec4(0.3f,1.0f,0.5f,0.15f));
+            set_line(ImVec4(1,1,0,0.6f), 1.5f);
+            ImPlot::PlotLine("Цель 3x", xs3, ys3, 2);
+            pop_line();
+            set_fill(ImVec4(0.3f,1.0f,0.5f,0.15f));
             ImPlot::PlotShaded("##shade",
-                s.history_x.data(),
-                s.history_speedup.data(),
+                s.history_x.data(), s.history_speedup.data(),
                 (int)s.history_x.size(), 0.0);
+            pop_fill();
+            set_line(ImVec4(0.3f,1.0f,0.5f,1.0f), 2.0f);
+            ImPlot::PlotLine("Ускорение",
+                s.history_x.data(), s.history_speedup.data(),
+                (int)s.history_x.size());
+            pop_line();
             ImPlot::EndPlot();
         }
 
-        if (ImPlot::BeginPlot("История времени выполнения (мс)",
+        if (begin_plot("История времени выполнения (мс)", "Прогон", "мс",
                 ImVec2(plot_w, plot_h2))) {
-            ImPlot::SetupAxes("Прогон №", "мс");
-            ImPlot::SetNextLineStyle(ImVec4(0.9f,0.4f,0.3f,1.0f), 2.0f);
+            set_line(ImVec4(0.9f,0.4f,0.3f,1.0f), 2.0f);
             ImPlot::PlotLine("Scalar",
                 s.history_x.data(), s.history_scalar.data(),
                 (int)s.history_x.size());
-            ImPlot::SetNextLineStyle(ImVec4(0.3f,0.6f,1.0f,1.0f), 2.0f);
+            pop_line();
+            set_line(ImVec4(0.3f,0.6f,1.0f,1.0f), 2.0f);
             ImPlot::PlotLine("NEON",
                 s.history_x.data(), s.history_neon.data(),
                 (int)s.history_x.size());
+            pop_line();
             ImPlot::EndPlot();
         }
     }
 
     if (s.sweep_done) {
-        if (ImPlot::BeginPlot("Sweep: время vs. размер массива",
+        if (begin_plot("Sweep: время vs. размер",
+                "Размер (эл.)", "мс",
                 ImVec2(plot_w * 0.5f - 4, plot_h2 + 20))) {
-            ImPlot::SetupAxes("Размер (элементов)", "мс");
-            ImPlot::SetupAxisScale(ImAxis_X1, ImPlotScale_Log10);
-            ImPlot::SetNextLineStyle(ImVec4(0.9f,0.4f,0.3f,1.0f), 2.0f);
+            set_line(ImVec4(0.9f,0.4f,0.3f,1.0f), 2.0f);
             ImPlot::PlotLine("Scalar",
                 s.sweep_sizes.data(), s.sweep_scalar_ms.data(),
                 (int)s.sweep_sizes.size());
-            ImPlot::SetNextLineStyle(ImVec4(0.3f,0.9f,0.5f,1.0f), 2.0f);
+            pop_line();
+            set_line(ImVec4(0.3f,0.9f,0.5f,1.0f), 2.0f);
             ImPlot::PlotLine("NEON",
                 s.sweep_sizes.data(), s.sweep_neon_ms.data(),
                 (int)s.sweep_sizes.size());
+            pop_line();
             ImPlot::EndPlot();
         }
 
         ImGui::SameLine();
-        if (ImPlot::BeginPlot("Sweep: ускорение vs. размер",
+        if (begin_plot("Sweep: ускорение vs. размер",
+                "Размер (эл.)", "Ускорение (x)",
                 ImVec2(plot_w * 0.5f - 4, plot_h2 + 20))) {
-            ImPlot::SetupAxes("Размер (элементов)", "Ускорение (×)");
-            ImPlot::SetupAxisScale(ImAxis_X1, ImPlotScale_Log10);
-            ImPlot::SetNextFillStyle(ImVec4(0.3f,1.0f,0.5f,0.2f));
+            set_fill(ImVec4(0.3f,1.0f,0.5f,0.2f));
             ImPlot::PlotShaded("##shade",
                 s.sweep_sizes.data(), s.sweep_speedup.data(),
                 (int)s.sweep_sizes.size(), 0.0);
-            ImPlot::SetNextLineStyle(ImVec4(0.3f,1.0f,0.5f,1.0f), 2.5f);
+            pop_fill();
+            set_line(ImVec4(0.3f,1.0f,0.5f,1.0f), 2.5f);
             ImPlot::PlotLine("Ускорение NEON",
                 s.sweep_sizes.data(), s.sweep_speedup.data(),
                 (int)s.sweep_sizes.size());
+            pop_line();
             double xs3[] = {s.sweep_sizes.front(), s.sweep_sizes.back()};
             double ys3[] = {3.0, 3.0};
-            ImPlot::SetNextLineStyle(ImVec4(1,1,0,0.7f), 1.5f);
-            ImPlot::PlotLine("Цель 3×", xs3, ys3, 2);
+            set_line(ImVec4(1,1,0,0.7f), 1.5f);
+            ImPlot::PlotLine("Цель 3x", xs3, ys3, 2);
+            pop_line();
             ImPlot::EndPlot();
         }
     }
@@ -493,7 +535,7 @@ int main(int /*argc*/, char** /*argv*/) {
 
         ImGui::Render();
         int w, h;
-        SDL_GetFramebufferSize(window, &w, &h);
+        SDL_GL_GetDrawableSize(window, &w, &h);
         glViewport(0, 0, w, h);
         glClearColor(0.10f, 0.10f, 0.12f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT);
