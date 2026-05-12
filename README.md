@@ -35,4 +35,18 @@ g++ -O3 \\
     -I imgui -I imgui/backends -I implot \\
     $(sdl2-config --cflags --libs) -lGL \\
     -o neon_gui  
-    
+
+-----------------------------------------------------------    
+
+g++ main_gui.cpp \
+imgui/*.cpp \
+imgui/backends/imgui_impl_glfw.cpp \
+imgui/backends/imgui_impl_opengl3.cpp \
+implot/implot.cpp implot/implot_items.cpp \
+-Iimgui -Iimgui/backends -Iimplot \
+-lglfw -lGL -ldl -o gui_app
+
+
+arm-linux-gnueabihf-g++ main.cpp -O3 -march=armv7-a -mfpu=neon -mfloat-abi=hard -o neon_lab
+aarch64-linux-gnu-g++ -O3 -march=armv8-a+simd -o main main.cpp -static
+qemu-aarch64 ./main
